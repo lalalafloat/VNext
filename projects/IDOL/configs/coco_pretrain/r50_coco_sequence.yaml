@@ -10,6 +10,7 @@ MODEL:
   IDOL:
     NUM_CLASSES: 80
     MULTI_CLS_ON: True
+  WEIGHTS: "path_to_your_checkpoint"
 DATASETS:
   TRAIN: ("coco_2017_train",)
   TEST: ("coco_2017_val",)
