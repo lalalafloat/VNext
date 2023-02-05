@@ -86,7 +86,8 @@ def get_detection_dataset_dicts(
     if isinstance(dataset_names, str):
         dataset_names = [dataset_names]
     assert len(dataset_names)
-    dataset_dicts = [DatasetCatalog.get(dataset_name) for dataset_name in dataset_names]
+    dataset_dicts = [DatasetCatalog.get(dataset_name) for dataset_name in dataset_names]  # [ATTN]
+    # print("len_data = {}".format(len(dataset_dicts[0])))  # len_data = 652380
     for dataset_name, dicts in zip(dataset_names, dataset_dicts):
         assert len(dicts), "Dataset '{}' is empty!".format(dataset_name)
 

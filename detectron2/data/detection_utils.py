@@ -389,12 +389,19 @@ def annotations_to_instances(annos, image_size, mask_format="polygon"):
         if len(annos)
         else np.zeros((0, 4))
     )
-    target = Instances(image_size)
+    target = Instances(image_size)  # [ATTN]
     target.gt_boxes = Boxes(boxes)
 
     classes = [int(obj["category_id"]) for obj in annos]
     classes = torch.tensor(classes, dtype=torch.int64)
     target.gt_classes = classes
+
+    # target.set('longscores', None)
+    if 'longscore' in annos[0].keys():
+        longscores = [obj['longscore'] for obj in annos]
+        longscores = torch.tensor(longscores, dtype=torch.float32)
+        # target.longscores = longscores
+        target.set('longscores', longscores)
 
     if len(annos) and "segmentation" in annos[0]:
         segms = [obj["segmentation"] for obj in annos]

@@ -247,6 +247,23 @@ def _get_coco_instances_meta():
     return ret
 
 
+def _get_coco_agn_instances_meta():
+    COCO_AGN_CATEGORIES = [
+        {"color": [220, 20, 60], "isthing": 1, "id": 1, "name": "coco"},
+    ]
+    thing_ids = [k["id"] for k in COCO_AGN_CATEGORIES if k["isthing"] == 1]
+    thing_colors = [k["color"] for k in COCO_AGN_CATEGORIES if k["isthing"] == 1]
+    assert len(thing_ids) == 1, len(thing_ids)
+    # Mapping from the incontiguous COCO category id to an id in [0, 79]
+    thing_dataset_id_to_contiguous_id = {k: i for i, k in enumerate(thing_ids)}
+    thing_classes = [k["name"] for k in COCO_AGN_CATEGORIES if k["isthing"] == 1]
+    ret = {
+        "thing_dataset_id_to_contiguous_id": thing_dataset_id_to_contiguous_id,
+        "thing_classes": thing_classes,
+        "thing_colors": thing_colors,
+    }
+    return ret
+
 def _get_coco_panoptic_separated_meta():
     """
     Returns metadata for "separated" version of the panoptic segmentation dataset.
@@ -281,6 +298,8 @@ def _get_coco_panoptic_separated_meta():
 
 
 def _get_builtin_metadata(dataset_name):
+    if dataset_name == "coco_agn":
+        return _get_coco_agn_instances_meta()
     if dataset_name == "coco":
         return _get_coco_instances_meta()
     if dataset_name == "coco_panoptic_separated":

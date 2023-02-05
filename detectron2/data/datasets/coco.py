@@ -146,8 +146,8 @@ Category ids in annotations are not in [1, #categories]! We'll apply a mapping f
 
     dataset_dicts = []
 
-    ann_keys = ["iscrowd", "bbox", "keypoints", "category_id"] + (extra_annotation_keys or [])
-
+    ann_keys = ["iscrowd", "bbox", "keypoints", "category_id"] + (extra_annotation_keys or [])  # [ATTN]
+    # print('ann_keys = {}'.format(ann_keys))
     num_instances_without_valid_segmentation = 0
 
     for (img_dict, anno_dict_list) in imgs_anns:
@@ -189,7 +189,7 @@ Category ids in annotations are not in [1, #categories]! We'll apply a mapping f
                     if len(segm) == 0:
                         num_instances_without_valid_segmentation += 1
                         continue  # ignore this instance
-                obj["segmentation"] = segm
+                obj["segmentation"] = segm  # [ATTN] 这里是有才加 如果没有就不加 如果没有后面会如何计算loss
 
             keypts = anno.get("keypoints", None)
             if keypts:  # list[int]
@@ -498,6 +498,35 @@ def register_coco_instances(name, metadata, json_file, image_root):
     assert isinstance(image_root, (str, os.PathLike)), image_root
     # 1. register a function which returns dicts
     DatasetCatalog.register(name, lambda: load_coco_json(json_file, image_root, name))
+
+    # 2. Optionally, add metadata about this dataset,
+    # since they might be useful in evaluation, visualization or logging
+    MetadataCatalog.get(name).set(
+        json_file=json_file, image_root=image_root, evaluator_type="coco", **metadata
+    )
+
+def register_coco_instances_pse(name, metadata, json_file, image_root):
+    """
+    Register a dataset in COCO's json annotation format for
+    instance detection, instance segmentation and keypoint detection.
+    (i.e., Type 1 and 2 in http://cocodataset.org/#format-data.
+    `instances*.json` and `person_keypoints*.json` in the dataset).
+
+    This is an example of how to register a new dataset.
+    You can do something similar to this function, to register new datasets.
+
+    Args:
+        name (str): the name that identifies a dataset, e.g. "coco_2014_train".
+        metadata (dict): extra metadata associated with this dataset.  You can
+            leave it as an empty dict.
+        json_file (str): path to the json instance annotation file.
+        image_root (str or path-like): directory which contains all the images.
+    """
+    assert isinstance(name, str), name
+    assert isinstance(json_file, (str, os.PathLike)), json_file
+    assert isinstance(image_root, (str, os.PathLike)), image_root
+    # 1. register a function which returns dicts
+    DatasetCatalog.register(name, lambda: load_coco_json(json_file, image_root, name, ['longscore']))
 
     # 2. Optionally, add metadata about this dataset,
     # since they might be useful in evaluation, visualization or logging

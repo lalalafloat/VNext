@@ -24,7 +24,7 @@ from detectron2.data import DatasetCatalog, MetadataCatalog
 from .builtin_meta import ADE20K_SEM_SEG_CATEGORIES, _get_builtin_metadata
 from .cityscapes import load_cityscapes_instances, load_cityscapes_semantic
 from .cityscapes_panoptic import register_all_cityscapes_panoptic
-from .coco import load_sem_seg, register_coco_instances
+from .coco import load_sem_seg, register_coco_instances, register_coco_instances_pse
 from .coco_panoptic import register_coco_panoptic, register_coco_panoptic_separated
 from .lvis import get_lvis_instances_meta, register_lvis_instances
 from .pascal_voc import register_pascal_voc
@@ -45,6 +45,17 @@ _PREDEFINED_SPLITS_COCO["coco"] = {
     "coco_2017_test": ("coco/test2017", "coco/annotations/image_info_test2017.json"),
     "coco_2017_test-dev": ("coco/test2017", "coco/annotations/image_info_test-dev2017.json"),
     "coco_2017_val_100": ("coco/val2017", "coco/annotations/instances_val2017_100.json"),
+}
+
+_PREDEFINED_SPLITS_COCO["coco_agn"] = {
+    "coco_2017_train_agn": ("coco/train2017", "coco/annotations/instances_train2017_agn.json"),
+    "coco_2017_val_agn": ("coco/val2017", "coco/annotations/instances_val2017_agn.json"),
+   
+}
+
+_JOINT_COCO_AND_TAO_PSE = {}
+_JOINT_COCO_AND_TAO_PSE["coco_agn"] = {  # coco_agn 与 上面共用 cate_meta_data
+    "coco_train_tao_30fps_pse": (".", "tao/annotations/right_json/coco_train_tao_30fps_pse.json")
 }
 
 _PREDEFINED_SPLITS_COCO["coco_person"] = {
@@ -103,6 +114,16 @@ def register_all_coco(root):
         for key, (image_root, json_file) in splits_per_dataset.items():
             # Assume pre-defined datasets live in `./datasets`.
             register_coco_instances(
+                key,
+                _get_builtin_metadata(dataset_name),
+                os.path.join(root, json_file) if "://" not in json_file else json_file,
+                os.path.join(root, image_root),
+            )
+
+    for dataset_name, splits_per_dataset in _JOINT_COCO_AND_TAO_PSE.items():
+        for key, (image_root, json_file) in splits_per_dataset.items():
+            # Assume pre-defined datasets live in `./datasets`.
+            register_coco_instances_pse(  # 加额外的数据longscore
                 key,
                 _get_builtin_metadata(dataset_name),
                 os.path.join(root, json_file) if "://" not in json_file else json_file,

@@ -18,6 +18,7 @@ Deformable DETR model and criterion classes.
 import torch
 import torch.nn.functional as F
 from torch import nn
+import torchvision.ops as ops
 import math
 
 from ..util import box_ops
@@ -267,7 +268,7 @@ class SetCriterion(nn.Module):
         src_logits = outputs['pred_logits']
         batch_size = len(targets)
         target_classes = torch.full(src_logits.shape[:2], self.num_classes,
-                                    dtype=torch.int64, device=src_logits.device)
+                                    dtype=torch.int64, device=src_logits.device)  # [B, N]
         src_logits_list = []
         target_classes_o_list = []
         for batch_idx in range(batch_size):
@@ -324,25 +325,47 @@ class SetCriterion(nn.Module):
         batch_size = len(targets)
         pred_box_list = []
         tgt_box_list = []
+        tgt_reweight_list = []
         for batch_idx in range(batch_size):
             valid_query = indices[batch_idx][0]
             gt_multi_idx = indices[batch_idx][1]
+            # print('sum = {}, len_gt = {}, gt_idx = {}'.format(valid_query.long().sum(), len(gt_multi_idx), gt_multi_idx))
             if len(gt_multi_idx)==0:
                 continue 
             bz_src_boxes = src_boxes[batch_idx]    
             bz_target_boxes = targets[batch_idx]["boxes"]
+            if targets[batch_idx]['need_mask'].sum() == 0:  # [ATTN]
+                assert valid_query.long().sum() == len(gt_multi_idx)
+                with torch.no_grad():  # 注意要用 no_grad 否则一次梯度回传后 下次网络输出全是nan
+                    match_mask = torch.zeros((len(gt_multi_idx), bz_target_boxes.shape[0])).to(bz_target_boxes)
+                    match_mask[range(len(gt_multi_idx)), gt_multi_idx] = 1
+                    pair_wise_ious = ops.box_iou(box_ops.box_cxcywh_to_xyxy(bz_src_boxes[valid_query]), box_ops.box_cxcywh_to_xyxy(bz_target_boxes))
+                    # print('pair.shape = {}, bz_target_box.shape = {}, match_mask.shape = {}'.format(pair_wise_ious.shape, bz_target_boxes.shape, match_mask.shape))
+                    longscores = targets[batch_idx]['longscores']
+                    pair_wise_ious = torch.sqrt(pair_wise_ious) * torch.sqrt(longscores)  # [num_props, num_gts]
+                    reweight = pair_wise_ious * match_mask
+                    # reweight = reweight.sum(0)[gt_multi_idx]
+                    reweight = reweight.sum(0)[gt_multi_idx] / match_mask.sum(0)[gt_multi_idx]
+                tgt_reweight_list.append(reweight)
+            else:
+                tgt_reweight_list.append(torch.ones(len(gt_multi_idx)).to(bz_target_boxes))
+
+            
             pred_box_list.append(bz_src_boxes[valid_query])
             tgt_box_list.append(bz_target_boxes[gt_multi_idx])
 
         if len(pred_box_list) != 0:
             src_boxes = torch.cat(pred_box_list)
             target_boxes = torch.cat(tgt_box_list)
+            target_reweight = torch.cat(tgt_reweight_list).unsqueeze(1)
             num_boxes = src_boxes.shape[0]
             
             loss_bbox = F.l1_loss(src_boxes, target_boxes, reduction='none')
+            # print('target_reweight.shape = {}, loss_bbox.shape = {}'.format(target_reweight.shape, loss_bbox.shape))
+            loss_bbox = loss_bbox *target_reweight
             losses = {}
             losses['loss_bbox'] = loss_bbox.sum() / num_boxes
-            loss_giou = giou_loss(box_ops.box_cxcywh_to_xyxy(src_boxes),box_ops.box_cxcywh_to_xyxy(target_boxes))
+            loss_giou = giou_loss(box_ops.box_cxcywh_to_xyxy(src_boxes),box_ops.box_cxcywh_to_xyxy(target_boxes)) * target_reweight
             losses['loss_giou'] = loss_giou.sum() / num_boxes
         else:
             losses = {'loss_bbox':outputs['pred_boxes'].sum()*0,
@@ -356,13 +379,17 @@ class SetCriterion(nn.Module):
            targets dicts must contain the key "masks" containing a tensor of dim [nb_target_boxes, h, w]
         """
         assert "pred_masks" in outputs
-
+        
 
         # tgt_idx = self._get_tgt_permutation_idx(indices)
-
+        
         src_masks = outputs["pred_masks"]
-        if type(src_masks) == list:
-            src_masks = torch.cat(src_masks, dim=1)[0]
+        assert len(src_masks) == len(targets)
+        # print('len_src_masks = {}, len_targets = {}'.format(len(src_masks), len(targets)))
+        # print('scr_masks[0].shape = {}'.format(src_masks[0].shape))  # scr_masks[0].shape = torch.Size([1, 31, 1, 152, 200])
+        # if type(src_masks) == list:
+        #     src_masks = torch.cat(src_masks, dim=1)[0]
+        
         key_frame_masks = [t["masks"] for t in targets]
         ref_frame_masks = [t["masks"] for t in ref_target] 
         #during coco pretraining, the sizes of two input frames are different, so we pad them together ant get key frame gt mask for loss calculation
@@ -370,28 +397,33 @@ class SetCriterion(nn.Module):
                                                              size_divisibility=32,
                                                              split=False).decompose()
         target_masks = target_masks[:len(key_frame_masks)]
-        target_masks = target_masks.to(src_masks)     
+        target_masks = target_masks.to(src_masks[0])     
         # downsample ground truth masks with ratio mask_out_stride
         start = int(self.mask_out_stride // 2)
         im_h, im_w = target_masks.shape[-2:]
         
-        target_masks = target_masks[:, :, start::self.mask_out_stride, start::self.mask_out_stride]
+        target_masks = target_masks[:, :, start::self.mask_out_stride, start::self.mask_out_stride]  # [B, N, H, W]
 
         assert target_masks.size(2) * self.mask_out_stride == im_h
         assert target_masks.size(3) * self.mask_out_stride == im_w       
 
         batch_size = len(targets)
         tgt_mask_list = []
+        select_src_mask = []
         for batch_idx in range(batch_size):
+            if targets[batch_idx]['need_mask'].sum() == 0:  # [ATTN]
+                continue
             valid_num = targets[batch_idx]["masks"].shape[0]
             gt_multi_idx = indices[batch_idx][1]
             if len(gt_multi_idx)==0:
                 continue 
             batch_masks = target_masks[batch_idx][:valid_num][gt_multi_idx].unsqueeze(1)
             tgt_mask_list.append(batch_masks)
+            select_src_mask.append(src_masks[batch_idx])
         
 
         if len(tgt_mask_list) != 0:
+            src_masks = torch.cat(select_src_mask, dim=1)[0]
             target_masks = torch.cat(tgt_mask_list)
             num_boxes = src_masks.shape[0]
             assert src_masks.shape == target_masks.shape
@@ -409,6 +441,7 @@ class SetCriterion(nn.Module):
                 "loss_dice": dice_loss(src_masks, target_masks, num_boxes),
             }
         else:
+            src_masks = torch.cat(src_masks, dim=1)[0]
             losses = {
             "loss_mask": (src_masks*0).sum(),
             "loss_dice": (src_masks*0).sum(),
@@ -420,32 +453,41 @@ class SetCriterion(nn.Module):
         qd_items = outputs['pred_qd']
         contras_loss = 0
         aux_loss = 0
-        if len(qd_items) == 0:
+        if sum([len(bt_qd_items) for bt_qd_items in qd_items]) == 0:
             losses = {'loss_reid': outputs['pred_logits'].sum()*0,
                    'loss_reid_aux':  outputs['pred_logits'].sum()*0 }
             return losses
-        for qd_item in qd_items:
-            pred = qd_item['contrast'].permute(1,0)
-            label = qd_item['label'].unsqueeze(0)
-            # contrastive loss
-            pos_inds = (label == 1)
-            neg_inds = (label == 0)
-            pred_pos = pred * pos_inds.float()
-            pred_neg = pred * neg_inds.float()
-            # use -inf to mask out unwanted elements.
-            pred_pos[neg_inds] = pred_pos[neg_inds] + float('inf')
-            pred_neg[pos_inds] = pred_neg[pos_inds] + float('-inf')
+        # print("len_targets = {}, len_qd_items = {}, sum_items = {}".format(len(targets), len(qd_items), sum([len(bt_qd_items) for bt_qd_items in qd_items])))
+        for bt_qd_item, targets_per_image in zip(qd_items, targets):  # 逐图片
+            if targets_per_image['need_mask'].sum() == 0:
+                # [TODO]
+                # continue
+                reid_weight = 0.1
+            else:
+                reid_weight = 1.0
+            for qd_item in bt_qd_item:
+                pred = qd_item['contrast'].permute(1,0)  # [num_prop, num_gt] -> [num_gt, num_prop]
+                label = qd_item['label'].unsqueeze(0)  # [1, num_prop]  [1,1,1,1,...,0,0,0]
+                # print('pred.shape = {}, label.shape = {}, label={}'.format(pred.shape, label.shape, label))
+                # contrastive loss
+                pos_inds = (label == 1)
+                neg_inds = (label == 0)
+                pred_pos = pred * pos_inds.float()
+                pred_neg = pred * neg_inds.float()
+                # use -inf to mask out unwanted elements.
+                pred_pos[neg_inds] = pred_pos[neg_inds] + float('inf')
+                pred_neg[pos_inds] = pred_neg[pos_inds] + float('-inf')
 
-            _pos_expand = torch.repeat_interleave(pred_pos, pred.shape[1], dim=1)
-            _neg_expand = pred_neg.repeat(1, pred.shape[1])
-            # [bz,N], N is all pos and negative samples on reference frame, label indicate it's pos or negative
-            x = torch.nn.functional.pad((_neg_expand - _pos_expand), (0, 1), "constant", 0) 
-            contras_loss += torch.logsumexp(x, dim=1)
+                _pos_expand = torch.repeat_interleave(pred_pos, pred.shape[1], dim=1)
+                _neg_expand = pred_neg.repeat(1, pred.shape[1])
+                # [bz,N], N is all pos and negative samples on reference frame, label indicate it's pos or negative
+                x = torch.nn.functional.pad((_neg_expand - _pos_expand), (0, 1), "constant", 0) 
+                contras_loss += torch.logsumexp(x, dim=1) * reid_weight
 
-            aux_pred = qd_item['aux_consin'].permute(1,0)
-            aux_label = qd_item['aux_label'].unsqueeze(0)
+                aux_pred = qd_item['aux_consin'].permute(1,0)
+                aux_label = qd_item['aux_label'].unsqueeze(0)
 
-            aux_loss += (torch.abs(aux_pred - aux_label)**2).mean()
+                aux_loss += (torch.abs(aux_pred - aux_label)**2).mean() * reid_weight
 
 
         losses = {'loss_reid': contras_loss.sum()/len(qd_items),

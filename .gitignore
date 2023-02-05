@@ -25,6 +25,12 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+*_gitig
+datasets/tao 
+datasets/coco
+*.so
+detectron2/model_zoo/configs
+
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.

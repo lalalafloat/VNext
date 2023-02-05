@@ -220,6 +220,8 @@ class IDOL(nn.Module):
      
 
         if self.training:
+            # print('batched_inputs = {}'.format(batched_inputs))
+            # return
             images = self.preprocess_image(batched_inputs)
             gt_instances = []
             for video in batched_inputs:
@@ -301,12 +303,20 @@ class IDOL(nn.Module):
             h, w = targets_per_image.image_size
             image_size_xyxy = torch.as_tensor([w, h, w, h], dtype=torch.float, device=self.device)
             gt_classes = targets_per_image.gt_classes
+            # longscores = targets_per_image.longscores if hasattr(targets_per_image, 'longscore') else None
+            if hasattr(targets_per_image, 'longscores'):  # [ATTN] 注意这里是longscores 有 s
+                longscores = targets_per_image.longscores
+                need_mask = torch.zeros_like(longscores)
+            else:
+                longscores = torch.zeros_like(gt_classes)
+                need_mask = torch.ones_like(gt_classes)
             gt_boxes = targets_per_image.gt_boxes.tensor / image_size_xyxy
             gt_boxes = box_xyxy_to_cxcywh(gt_boxes)
             gt_masks = targets_per_image.gt_masks.tensor
             inst_ids = targets_per_image.gt_ids
             valid_id = inst_ids!=-1  # if a object is disappeared，its gt_ids is -1
-            new_targets.append({"labels": gt_classes, "boxes": gt_boxes, 'masks': gt_masks, 'inst_id':inst_ids, 'valid':valid_id})
+            
+            new_targets.append({"labels": gt_classes, "boxes": gt_boxes, 'masks': gt_masks, 'inst_id':inst_ids, 'valid':valid_id, 'longscores': longscores, 'need_mask': need_mask})  # 这个里面每个img的标注数量是否需要一样，label和box起码是一样的
         bz = len(new_targets)//2
         key_ids = list(range(0,bz*2-1,2))
         ref_ids = list(range(1,bz*2,2))
@@ -320,7 +330,7 @@ class IDOL(nn.Module):
                 for k,v in det_target.items():
                     det_target[k] = v[valid_i]
                 for k,v in ref_target.items():
-                    ref_target[k] = v[valid_i]
+                    ref_target[k] = v[valid_i]  # 这个点其实可以不错的解耦数据
 
  
         return det_targets,ref_targets

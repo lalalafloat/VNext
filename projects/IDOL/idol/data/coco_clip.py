@@ -113,6 +113,8 @@ class COCO_CLIP_DatasetMapper:
         Returns:
             dict: a format that builtin models in detectron2 accept
         """
+        # print('dataset_dict in mapper = {}'.format(dataset_dict))
+        # dataset_dict in mapper = {'file_name': 'datasets/./tao/frames/train/Charades/4H61U/frame0110.jpg', 'height': 720, 'width': 1280, 'image_id': 1524486, 'annotations': [{'iscrowd': 0, 'bbox': [209, 148, 189, 536], 'category_id': 0, 'longscore': 0.8300819993019104, 'segmentation': [[209, 148, 398, 148, 398, 684, 209, 684]], 'bbox_mode': <BoxMode.XYWH_ABS: 1>}, {'iscrowd': 0, 'bbox': [432, 446, 279, 266], 'category_id': 0, 'longscore': 0.680676281452179, 'segmentation': [[432, 446, 711, 446, 711, 712, 432, 712]], 'bbox_mode': <BoxMode.XYWH_ABS: 1>}, {'iscrowd': 0, 'bbox': [4, 661, 236, 57], 'category_id': 0, 'longscore': 0.5973333716392517, 'segmentation': [[4, 661, 240, 661, 240, 718, 4, 718]], 'bbox_mode': <BoxMode.XYWH_ABS: 1>}, {'iscrowd': 0, 'bbox': [183, 501, 116, 216], 'category_id': 0, 'longscore': 0.4537712633609772, 'segmentation': [[183, 501, 299, 501, 299, 717, 183, 717]], 'bbox_mode': <BoxMode.XYWH_ABS: 1>}, {'iscrowd': 0, 'bbox': [1, 505, 144, 148], 'category_id': 0, 'longscore': 0.3760734796524048, 'segmentation': [[1, 505, 145, 505, 145, 653, 1, 653]], 'bbox_mode': <BoxMode.XYWH_ABS: 1>}, {'iscrowd': 0, 'bbox': [830, 439, 56, 69], 'category_id': 0, 'longscore': 0.2500464618206024, 'segmentation': [[830, 439, 886, 439, 886, 508, 830, 508]], 'bbox_mode': <BoxMode.XYWH_ABS: 1>}, {'iscrowd': 0, 'bbox': [866, 371, 21, 74], 'category_id': 0, 'longscore': 0.22115252912044525, 'segmentation': [[866, 371, 887, 371, 887, 445, 866, 445]], 'bbox_mode': <BoxMode.XYWH_ABS: 1>}, {'iscrowd': 0, 'bbox': [345, 174, 41, 131], 'category_id': 0, 'longscore': 0.2198409140110016, 'segmentation': [[345, 174, 386, 174, 386, 305, 345, 305]], 'bbox_mode': <BoxMode.XYWH_ABS: 1>}, {'iscrowd': 0, 'bbox': [363, 166, 44, 465], 'category_id': 0, 'longscore': 0.21333521604537964, 'segmentation': [[363, 166, 407, 166, 407, 631, 363, 631]], 'bbox_mode': <BoxMode.XYWH_ABS: 1>}, {'iscrowd': 0, 'bbox': [374, 242, 31, 95], 'category_id': 0, 'longscore': 0.2091483175754547, 'segmentation': [[374, 242, 405, 242, 405, 337, 374, 337]], 'bbox_mode': <BoxMode.XYWH_ABS: 1>}]}
         dataset_dict = copy.deepcopy(dataset_dict)  # it will be modified by code below
         image = utils.read_image(dataset_dict["file_name"], format=self.img_format)
         utils.check_image_size(dataset_dict, image)
@@ -143,11 +145,14 @@ class COCO_CLIP_DatasetMapper:
             key_annotations = dataset_dict.pop("annotations")
             ref_annotations = copy.deepcopy(key_annotations)
             
+            # 这里面只对annos的box, seg, keypoint做了变换,  
             annos_key = [
                 utils.transform_instance_annotations(obj, transforms_key, key_image_shape)
                 for obj in key_annotations
                 if obj.get("iscrowd", 0) == 0
             ]
+            
+            # print('annos_key = {}'.format(annos_key))
             instances_key = utils.annotations_to_instances(annos_key, key_image_shape, mask_format="bitmask")
             
             

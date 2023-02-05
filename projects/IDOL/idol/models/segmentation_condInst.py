@@ -129,7 +129,7 @@ class CondInst_segm(nn.Module):
         ref_ids = list(range(1,bz*2,2))
 
         for n_l in range(self.detr.num_feature_levels ):
-            srcs_key.append(srcs[n_l][key_ids])
+            srcs_key.append(srcs[n_l][key_ids])  # 逐层的特征
             srcs_reference.append(srcs[n_l][ref_ids])
             masks_key.append(masks[n_l][key_ids])
             masks_reference.append(masks[n_l][ref_ids])
@@ -169,7 +169,7 @@ class CondInst_segm(nn.Module):
             outputs_coord = tmp.sigmoid()
             outputs_classes.append(outputs_class)
             outputs_coords.append(outputs_coord)
-            outputs_layer = {'pred_logits': outputs_class, 'pred_boxes': outputs_coord}
+            outputs_layer = {'pred_logits': outputs_class, 'pred_boxes': outputs_coord}  # 这里每层求出来只是为了去求mask的
             dynamic_mask_head_params = self.controller(hs[lvl])    # [bs, num_quries, num_params]
 
             # for training & log evaluation loss
@@ -215,7 +215,7 @@ class CondInst_segm(nn.Module):
 
         # outputs['pred_samples'] = inter_samples[-1]
         
-        outputs['pred_logits'] = outputs_class[-1]
+        outputs['pred_logits'] = outputs_class[-1]  # 只用了最后一层的结果去求loss
         outputs['pred_boxes'] = outputs_coord[-1]
         outputs['pred_masks'] = outputs_mask[-1]
         outputs['pred_qd'] = contrast_items

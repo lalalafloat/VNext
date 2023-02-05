@@ -72,6 +72,12 @@ class HungarianMatcher(nn.Module):
                 pair_wise_ious = ops.box_iou(box_cxcywh_to_xyxy(bz_boxes), box_cxcywh_to_xyxy(bz_gtboxs))
                 # pair_wise_ious_loss = -torch.log(pair_wise_ious + 1e-8)
                 
+                if 'longscores' in targets[batch_idx].keys():
+                    
+                    longscores = targets[batch_idx]['longscores']
+                    # print('longscores.shape = {}, pari_wise_iouss.shape = {}'.format(longscores.shape, pair_wise_ious.shape))  # [num_match_gt]  [300, num_match_gt]
+                    pair_wise_ious = torch.sqrt(pair_wise_ious) * torch.sqrt(longscores)
+
                 # Compute the classification cost.
                 alpha = 0.25
                 gamma = 2.0

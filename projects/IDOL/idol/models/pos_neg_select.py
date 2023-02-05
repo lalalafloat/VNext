@@ -19,20 +19,20 @@ def select_pos_neg(ref_box, all_indices, targets, det_targets, embed_head, hs_ke
     contrast_items = []
     assert len(targets) == len(all_indices)
     # l2_items = []
-    for bz_i,(v,detv, indices) in enumerate(zip(targets,det_targets,all_indices)):
+    for bz_i,(v,detv, indices) in enumerate(zip(targets,det_targets,all_indices)):  # for batch
         num_insts = len(v["labels"]) 
         # tgt_valid = v["valid"].reshape(num_insts)
-        tgt_bbox = v["boxes"].reshape(num_insts,4) 
+        tgt_bbox = v["boxes"].reshape(num_insts,4)   # 这个是参考帧上的gt
         tgt_labels = v['labels']
         # tgt_valid = tgt_valid[:,1]    
-        ref_box_bz = ref_box[bz_i]
+        ref_box_bz = ref_box[bz_i]  # 这个是参考帧上最后一层的预测结果
         ref_cls_bz = ref_cls[bz_i]
         tgt_valid = v["valid"]
                
         contrastive_pos = get_pos_idx(ref_box_bz,ref_cls_bz,tgt_bbox,tgt_labels, tgt_valid)
 
-
-        for inst_i, (valid,matched_query_id) in enumerate(zip(tgt_valid,indices)):
+        batch_contrast_items = []
+        for inst_i, (valid,matched_query_id) in enumerate(zip(tgt_valid,indices)):  # for instance
             
             if not valid:  
                 continue
@@ -62,8 +62,8 @@ def select_pos_neg(ref_box, all_indices, targets, det_targets, embed_head, hs_ke
             cosine = torch.einsum('nc,kc->nk',[aux_contrastive_embed,key_embed_i])
 
 
-            contrast_items.append({'contrast':contrast,'label':contrastive_label, 'aux_consin':cosine,'aux_label':aux_contrastive_label})
-
+            batch_contrast_items.append({'contrast':contrast,'label':contrastive_label, 'aux_consin':cosine,'aux_label':aux_contrastive_label})
+        contrast_items.append(batch_contrast_items)  # 多套了一层Batch的维度，方便后面区分图片进行加权
     return contrast_items
 
 
