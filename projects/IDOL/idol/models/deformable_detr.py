@@ -357,16 +357,16 @@ class SetCriterion(nn.Module):
         if len(pred_box_list) != 0:
             src_boxes = torch.cat(pred_box_list)
             target_boxes = torch.cat(tgt_box_list)
-            target_reweight = torch.cat(tgt_reweight_list).unsqueeze(1)
+            target_reweight = torch.cat(tgt_reweight_list)
             num_boxes = src_boxes.shape[0]
             
             loss_bbox = F.l1_loss(src_boxes, target_boxes, reduction='none')
-            # print('target_reweight.shape = {}, loss_bbox.shape = {}'.format(target_reweight.shape, loss_bbox.shape))
-            loss_bbox = loss_bbox *target_reweight
+            loss_bbox = loss_bbox * target_reweight.unsqueeze(1)
             losses = {}
-            losses['loss_bbox'] = loss_bbox.sum() / num_boxes
-            loss_giou = giou_loss(box_ops.box_cxcywh_to_xyxy(src_boxes),box_ops.box_cxcywh_to_xyxy(target_boxes)) * target_reweight
-            losses['loss_giou'] = loss_giou.sum() / num_boxes
+            losses['loss_bbox'] = loss_bbox.sum() / target_reweight.sum()
+            loss_giou = giou_loss(box_ops.box_cxcywh_to_xyxy(src_boxes),box_ops.box_cxcywh_to_xyxy(target_boxes))
+            loss_giou = loss_giou * target_reweight
+            losses['loss_giou'] = loss_giou.sum() / target_reweight.sum()
         else:
             losses = {'loss_bbox':outputs['pred_boxes'].sum()*0,
             'loss_giou':outputs['pred_boxes'].sum()*0}
